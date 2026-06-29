@@ -14,7 +14,12 @@ jobs:
     uses: DiamondLightSource/myst-version-switcher-plugin/.github/workflows/publish.yml@<tag>
     with:
       version-name: ${{ needs.docs.outputs.version-name }}
-    permissions: { pages: write, id-token: write, contents: read, actions: read, statuses: write }
+    permissions:
+      pages: write
+      id-token: write
+      contents: read
+      actions: read
+      statuses: write
 ```
 
 The site-reconstruction logic (`assemble/`) is **internal** — `publish.yml` runs it
@@ -29,7 +34,7 @@ preinstalled Node, so `build-command` can be `make` / `npx` / `tox` / `npm` driv
 
 | input | required | default | meaning |
 |---|---|---|---|
-| `build-command` | no | `make docs` | Command that builds the HTML site into `html-dir` at `$BASE_URL`. Fold any project setup (`cp CONFIG`, `npm ci`, apt deps) behind it. |
+| `build-command` | **yes** | — | Command that builds the HTML site into `html-dir` at `$BASE_URL`. Fold any project setup (`cp CONFIG`, `npm ci`, apt deps) behind it. |
 | `html-dir` | no | `docs/_build/html` | Directory the build writes the site to; staged into `docs.zip`'s `html/`. |
 
 | output | meaning |
@@ -50,7 +55,7 @@ generic.
   the `<tag>` the consumer pinned — no version bump; the consumer's repo stays checked out
   at the root so `assemble.mjs`'s `git tag` lists *their* versions. The inline path injects
   the in-run build via `version-name`; the dispatch paths pure-gather.
-- **`trampoline`** — a tag push. Waits for the release, then re-dispatches the shim
+- **`re-dispatch`** — a tag push. Waits for the release, then re-fires the shim
   (`dispatch-workflow`, a file in the consumer's repo — a `workflow_call` run executes with
   the caller's token, so it can dispatch it) so the deploy lands as a `workflow_dispatch`
   and re-serves.
@@ -65,8 +70,8 @@ is `workflow_dispatch`
 ## `publish-dispatch.yml` — the thin shim (one per repo)
 
 The only thing that calls `publish.yml`, the single place you pin `publish.yml@<tag>`, and
-the **dispatchable file** the trampoline re-dispatches. It just forwards to the engine via
-`workflow_call` (ci.yml's `publish`, every event) and `workflow_dispatch` (the trampoline's
+the **dispatchable file** the re-dispatch job re-fires. It just forwards to the engine via
+`workflow_call` (ci.yml's `publish`, every event) and `workflow_dispatch` (the tag
 re-dispatch, a fork-PR preview, a manual re-deploy). A reusable workflow can't be
 `workflow_dispatch`'d cross-repo, which is why this file lives in each repo.
 
@@ -77,7 +82,7 @@ re-dispatch, a fork-PR preview, a manual re-deploy). A reusable workflow can't b
 | `version-name` | no | `""` | Version name of **this run's** `docs` artifact to stage directly, instead of gathering it from durable sources. Set by `ci.yml`'s inline publish (the run isn't a completed success yet, so the gather can't discover it — or would find a stale previous build). Empty → pure durable gather (the dispatch paths). |
 | `guard-default-branch` | no | `true` | When `true`, hard-fail if the consumer's default branch is absent from the site (its build artifact expired). Set `false` while a repo's default branch isn't yet publishing `docs.zip` (mid-migration). |
 | `pr` | no | `""` | Fork PR number to approve (pins its head SHA as `preview-approved`) and preview. Set on the shim's `workflow_dispatch` path. |
-| `dispatch-workflow` | no | `publish-dispatch.yml` | Filename of the shim in the consumer's repo, re-dispatched by the `trampoline` job. Override only if you renamed the shim. |
+| `dispatch-workflow` | no | `publish-dispatch.yml` | Filename of the shim in the consumer's repo, re-fired by the `re-dispatch` job. Override only if you renamed the shim. |
 
 ## What `publish.yml` gathers
 

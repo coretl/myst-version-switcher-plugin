@@ -85,7 +85,7 @@ ok(
 assert.deepEqual(discoverVersions(join(site, "does-not-exist")), []);
 ok("discoverVersions returns [] for a missing dir");
 
-// --- isPrerelease: rc/a/b markers (parity with _release.yml) ---
+// --- isPrerelease: rc/a/b markers (parity with release.yml) ---
 assert.equal(isPrerelease("2.1"), false);
 assert.equal(isPrerelease("2.1.0"), false);
 assert.ok(isPrerelease("2.1rc1"));

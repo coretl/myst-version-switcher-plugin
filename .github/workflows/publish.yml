@@ -5,21 +5,21 @@ name: Publish
 # directly to GitHub Pages — no gh-pages branch. The PRIVILEGED half. Its only caller is
 # a thin `publish-dispatch.yml` shim (this repo's own, or a consumer's pinned at <tag>)
 # which exposes it as both `workflow_call` (ci.yml's `publish` job, for every event) and
-# `workflow_dispatch` (the trampoline's re-dispatch + fork-PR opt-in + manual re-deploy).
+# `workflow_dispatch` (the tag re-dispatch + fork-PR opt-in + manual re-deploy).
 # This workflow OWNS the event branching, into one of three jobs:
 #
-#   deploy     — internal PR / default-branch push / any workflow_dispatch → assemble +
-#                deploy + verify. The inline path injects the in-run build via
-#                `version-name`; the dispatch paths pure-gather (version-name "").
-#   trampoline — a TAG push. An inline tag deploy is silently DROPPED by Pages (it reuses
-#                the default branch's just-deployed SHA on a non-dispatch event —
-#                deploy-pages#383), so wait for the release, then re-dispatch the shim
-#                (`inputs.dispatch-workflow`, a file in the CONSUMER's repo — a
-#                workflow_call run executes with the caller's repo + token, so we can
-#                dispatch it) → the deploy lands on a `workflow_dispatch` event and
-#                re-serves. A reusable workflow can't be dispatched cross-repo, which is
-#                why the shim (not this engine) is the dispatch target.
-#   warn       — a FORK PR. Read-only token, never deploys; just surfaces the opt-in hint.
+#   deploy      — internal PR / default-branch push / any workflow_dispatch → assemble +
+#                  deploy + verify. The inline path injects the in-run build via
+#                  `version-name`; the dispatch paths pure-gather (version-name "").
+#   re-dispatch  — a TAG push. An inline tag deploy is silently DROPPED by Pages (it reuses
+#                  the default branch's just-deployed SHA on a non-dispatch event —
+#                  deploy-pages#383), so wait for the release, then re-fire the shim
+#                  (`inputs.dispatch-workflow`, a file in the CONSUMER's repo — a
+#                  workflow_call run executes with the caller's repo + token, so we can
+#                  dispatch it) → the deploy lands on a `workflow_dispatch` event and
+#                  re-serves. A reusable workflow can't be dispatched cross-repo, which is
+#                  why the shim (not this engine) is the dispatch target.
+#   warn         — a FORK PR. Read-only token, never deploys; just surfaces the opt-in hint.
 #
 # The assemble logic is THIS repo's assemble/assemble.sh (+ assemble.mjs); we run it
 # directly rather than wrap it in a composite action. To version-match the scripts to
@@ -54,8 +54,8 @@ on:
         type: string
       dispatch-workflow:
         description: >-
-          Filename of the publish-dispatch shim in the consumer's repo, re-dispatched by
-          the tag trampoline. Defaults to the conventional name; override if you renamed it.
+          Filename of the publish-dispatch shim in the consumer's repo, re-fired by
+          the tag re-dispatch. Defaults to the conventional name; override if you renamed it.
         required: false
         default: publish-dispatch.yml
         type: string
@@ -170,8 +170,8 @@ jobs:
       # event (it reports success but the origin keeps serving the first artifact),
       # EXCEPT a `workflow_dispatch` deploy of that SHA, which forces a re-serve. A
       # release tag shares the default branch's just-deployed SHA, so an inline tag
-      # deploy would be dropped — which is why tags go through the `trampoline` job
-      # below (re-dispatch as workflow_dispatch) instead of here. main/internal-PR
+      # deploy would be dropped — which is why tags go through the `re-dispatch` job
+      # below (re-fired as workflow_dispatch) instead of here. main/internal-PR
       # deploys are the FIRST of their SHA, so they serve fine inline. The Verify step
       # below backstops any residual stale-origin case.
       - name: Deploy to GitHub Pages
@@ -182,12 +182,12 @@ jobs:
       # if the Pages backend silently fails to update the SERVED origin (a wedged
       # site can serve a stale artifact indefinitely; see the 2026-06 incident where
       # a gh-pages→Actions cutover froze the origin while every deploy reported OK).
-      # The trampoline (deploy via workflow_dispatch) prevents the tag-after-merge
+      # The re-dispatch (deploy via workflow_dispatch) prevents the tag-after-merge
       # drop; this is the backstop that turns any *other* stale-origin failure into a
       # red check instead of silently serving old docs. Confirm the live switcher.json
       # byte-matches the one we just assembled, polling up to ~6 min — the window is
       # generous because a release deploys TWICE in quick succession on the same SHA (the
-      # merge-to-default-branch push, then the tag trampoline), and the second (dispatch)
+      # merge-to-default-branch push, then the tag re-dispatch), and the second (dispatch)
       # re-serve can take a few minutes to propagate to the origin behind the first
       # (observed ~4 min on 2026-06-25). The loop exits the instant the origin matches,
       # so a fast/first-of-SHA deploy isn't slowed. On failure, dump the origin headers
@@ -229,7 +229,7 @@ jobs:
   # A tag can't deploy inline (same SHA as the default-branch push → Pages drops it
   # unless the event is workflow_dispatch). Wait for the release, then re-dispatch the
   # shim so the deploy runs on a workflow_dispatch event and re-serves.
-  trampoline:
+  re-dispatch:
     if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:

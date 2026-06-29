@@ -5,8 +5,7 @@ on:
     inputs:
       build-command:
         description: Command that builds the HTML site into html-dir at $BASE_URL.
-        required: false
-        default: make docs
+        required: true
         type: string
       html-dir:
         description: Directory the build writes the site to (packed as docs.zip's html/).

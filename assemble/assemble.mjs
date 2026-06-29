@@ -11,7 +11,7 @@
  *       → write switcher.json + index.html into <dir>; print the stable-alias
  *         source dir (the newest deployed release) on stdout, or nothing. Runs
  *         after all gathering, so it also exit-1s if a --required branch is
- *         absent from the site (the load-bearing-branch guard).
+ *         absent from the site (the required-branch guard).
  *
  * The pure functions take plain data so they unit-test without git, the network,
  * or (mostly) the filesystem. Only `discoverVersions`, `getSortedTags` and the
@@ -93,7 +93,7 @@ export function orderVersions(builds, tags) {
 }
 
 /**
- * Is `tag` a prerelease? Mirrors `_release.yml`'s test (an `a`, `b`, or `rc`
+ * Is `tag` a prerelease? Mirrors `release.yml`'s test (an `a`, `b`, or `rc`
  * marker in the name, PEP 440 style) so "stable" means the same thing repo-wide.
  */
 export function isPrerelease(tag) {
@@ -141,7 +141,7 @@ export function stablePlan(versions, tags) {
  * among them. By the time `generate` runs, the current
  * ref and every gathered branch are already dirs, so this needs no separate
  * "present" bookkeeping. The action gathers a preview for every branch with a
- * recent CI build (dumb bash); this only guards that the load-bearing branches
+ * recent CI build (dumb bash); this only guards that the required branches
  * (default: the repo's default branch) didn't silently vanish. `generate`
  * hard-fails on a non-empty result.
  *
@@ -226,7 +226,7 @@ function cmdGenerate(rest) {
 
 	const builds = discoverVersions(siteDir);
 
-	// Guard the load-bearing branches before writing anything: a required branch
+	// Guard the required branches before writing anything: a required branch
 	// with no gathered dir means the deploy would publish a hole.
 	const missing = missingRequired(csv(values.required), builds);
 	if (missing.length > 0) {

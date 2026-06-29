@@ -114,21 +114,37 @@ default_zip=""
 if [ "$default" = "$ARTIFACT_VERSION_NAME" ]; then
   default_zip="$ARTIFACT_ZIP"
 else
+  # Try each source in turn and ACCEPT it only if it actually staged $SITE/$default.
+  # A source that downloads but yields no usable docs.zip — a pre-cutover artifact
+  # that is a bare html dir (not a docs.zip), or a docs.zip without an html/ root —
+  # must NOT stop the search: the default branch is required, so we fall through to
+  # the durable in-site copy and then the migration seed instead of failing hard.
+  # (Mid-migration the old pipeline can still upload a `docs` artifact of the wrong
+  # shape, so download success alone can't mean the branch is staged.)
   main_run=$(gh run list --repo "$REPO" --workflow ci.yml --branch "$default" \
     --event push --status success --limit 1 --json databaseId -q '.[0].databaseId // empty')
   if [ -n "$main_run" ] && download_run "$main_run" "$TMP/dl-$default" "branch $default"; then
-    default_zip="$TMP/dl-$default/docs.zip"
-    extract "$default_zip" "$default" "branch $default"
-  elif curl -fsSL "$PAGES_URL/$SOURCES_DIR/$default.zip" -o "$TMP/durable-$default.zip" 2>/dev/null; then
-    default_zip="$TMP/durable-$default.zip"
-    extract "$default_zip" "$default" "branch $default (durable in-site copy)"
-    echo "::notice::default branch '$default' restored from the durable in-site copy ($PAGES_URL/$SOURCES_DIR/$default.zip)"
-  elif gh release download "$SEED_TAG" --repo "$REPO" -p docs.zip -O "$TMP/seed-$default.zip" 2>/dev/null; then
-    default_zip="$TMP/seed-$default.zip"
-    extract "$default_zip" "$default" "branch $default (migration seed)"
-    echo "::notice::default branch '$default' staged from the migration seed release '$SEED_TAG' — persisted to _sources this deploy"
-  else
-    echo "::warning::default branch '$default': no fresh CI build, durable in-site copy, or seed release"
+    extract "$TMP/dl-$default/docs.zip" "$default" "branch $default"
+    if [ -d "$SITE/$default" ]; then default_zip="$TMP/dl-$default/docs.zip"; fi
+  fi
+  if [ -z "$default_zip" ] && \
+     curl -fsSL "$PAGES_URL/$SOURCES_DIR/$default.zip" -o "$TMP/durable-$default.zip" 2>/dev/null; then
+    extract "$TMP/durable-$default.zip" "$default" "branch $default (durable in-site copy)"
+    if [ -d "$SITE/$default" ]; then
+      default_zip="$TMP/durable-$default.zip"
+      echo "::notice::default branch '$default' restored from the durable in-site copy ($PAGES_URL/$SOURCES_DIR/$default.zip)"
+    fi
+  fi
+  if [ -z "$default_zip" ] && \
+     gh release download "$SEED_TAG" --repo "$REPO" -p docs.zip -O "$TMP/seed-$default.zip" 2>/dev/null; then
+    extract "$TMP/seed-$default.zip" "$default" "branch $default (migration seed)"
+    if [ -d "$SITE/$default" ]; then
+      default_zip="$TMP/seed-$default.zip"
+      echo "::notice::default branch '$default' staged from the migration seed release '$SEED_TAG' — persisted to _sources this deploy"
+    fi
+  fi
+  if [ -z "$default_zip" ]; then
+    echo "::warning::default branch '$default': no fresh CI build (with a usable docs.zip), durable in-site copy, or seed release"
   fi
 fi
 
@@ -181,7 +197,7 @@ fi
 # --- generate switcher.json + redirect + stable-alias source ---
 # `generate` discovers the gathered dirs, orders them, writes switcher.json +
 # index.html, and prints the stable-alias source dir (or nothing). It also exit-1s
-# (→ set -e) if the --required (default) branch is absent — the load-bearing guard.
+# (→ set -e) if the --required (default) branch is absent — the required-branch guard.
 required=""
 [ "$GUARD_DEFAULT_BRANCH" = "true" ] && required="$default"
 stable_src=$(node "$here/assemble.mjs" generate \

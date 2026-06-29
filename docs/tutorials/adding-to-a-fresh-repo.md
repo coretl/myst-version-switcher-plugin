@@ -83,9 +83,9 @@ jobs:
   docs:   # Call the docs building workflow directly
     uses: DiamondLightSource/myst-version-switcher-plugin/.github/workflows/docs.yml@__LATEST_TAG__
     with:
-      # Whatever turns your sources into docs/_build/html at $BASE_URL.
-      # uv and Node are preinstalled, so this can be make / tox / npx / npm.
-      build-command: myst build --html      # e.g. make docs · tox -e docs · npm ci && npm run docs
+      # Whatever turns your sources into docs/_build/html at $BASE_URL. uv and Node
+      # are preinstalled, so: make docs · tox -e docs · npm ci && npm run docs
+      build-command: myst build --html
 
   release: 
     needs: [docs]
@@ -96,7 +96,8 @@ jobs:
 
   publish:
     needs: [docs]
-    if: github.repository == 'ORG/REPO'     # don't publish a pages site in the fork's org
+    # don't publish a pages site in the fork's org
+    if: github.repository == 'ORG/REPO'
     uses: ./.github/workflows/publish-dispatch.yml   # your workflow (below)
     with:
       version-name: ${{ needs.docs.outputs.version-name }}
@@ -112,7 +113,7 @@ jobs:
 
 `publish.yml` is the engine and owns all the branching; this is a thin **shim** — the
 only thing that calls it, and the one place you pin `@__LATEST_TAG__`. It has to exist as a file
-in your repo (not just be `uses:`'d) because the tag trampoline re-dispatches it as a
+in your repo (not just be `uses:`'d) because the tag re-dispatch re-fires it as a
 `workflow_dispatch`, and a reusable workflow can't be dispatched cross-repo. Copy it
 verbatim; the only thing to keep current is the `publish.yml` pin, already set to
 `__LATEST_TAG__`:
@@ -124,21 +125,33 @@ on:
   workflow_call:                    # ci.yml's `publish` job, for every event
     inputs:
       version-name: { required: false, default: "", type: string }
-  workflow_dispatch:                # tag trampoline's re-dispatch + fork-PR preview + manual re-deploy
+  # tag re-dispatch + fork-PR preview + manual re-deploy
+  workflow_dispatch:
     inputs:
-      pr: { description: "Fork PR to approve + preview (empty = re-deploy)", required: false, default: "" }
+      pr:
+        description: "Fork PR to approve + preview (empty = re-deploy)"
+        required: false
+        default: ""
 jobs:
   publish:
     uses: DiamondLightSource/myst-version-switcher-plugin/.github/workflows/publish.yml@__LATEST_TAG__
     with:
-      version-name: ${{ inputs.version-name }}    # "" on dispatch → pure durable gather
-      pr: ${{ inputs.pr }}                         # set (dispatch) → pin that fork head SHA
-      dispatch-workflow: publish-dispatch.yml      # the file the tag trampoline re-dispatches
-    permissions: { contents: read, actions: write, pages: write, id-token: write, statuses: write }
+      # "" on dispatch → pure durable gather
+      version-name: ${{ inputs.version-name }}
+      # set (dispatch) → pin that fork head SHA
+      pr: ${{ inputs.pr }}
+      # the file the tag re-dispatch re-fires
+      dispatch-workflow: publish-dispatch.yml
+    permissions:
+      contents: read
+      actions: write
+      pages: write
+      id-token: write
+      statuses: write
 ```
 
 `publish.yml` then routes each event: **deploy** (internal PR / `main` push, or any
-dispatch), **trampoline** (a tag → re-dispatches this shim so the deploy runs as a
+dispatch), **re-dispatch** (a tag → re-fires this shim so the deploy runs as a
 `workflow_dispatch` — [why](../explanations/architecture.md)), or **warn** (a fork PR,
 read-only, never deploys). A maintainer publishes a fork preview by running this workflow
 from the Actions tab with the `pr` number.
@@ -156,10 +169,12 @@ see:
   read-only hint — forks never auto-publish); a maintainer dispatches the wrapper with
   the `pr` number to preview one.
 
-> **First-time exception:** on a brand-new repo the `publish` check is **red on this
-> setup PR** — there's no `main` build yet for the versioned site to anchor on, and the
-> default-branch guard refuses to publish a site missing it. It clears the moment you
-> merge (step 6). Every PR after that previews normally.
+:::{note} First-time exception
+On a brand-new repo the `publish` check is **red on this setup PR** — there's no
+`main` build yet for the versioned site to anchor on, and the default-branch guard
+refuses to publish a site missing it. It clears the moment you merge (step 6). Every
+PR after that previews normally.
+:::
 
 ## 5. Merge to main — your first deploy
 
@@ -183,10 +198,12 @@ build's `docs.zip` attached. This works on any repo, including ones with [immuta
 releases](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases)
 enabled (it attaches the asset as the release is created, before it's sealed).
 
-> On a repo **without** immutable releases you can instead **publish a release from the
-> GitHub UI** — that also creates the tag, and the `release` job attaches `docs.zip` to
-> the release you published. (This doesn't work under immutable releases: a published
-> immutable release can't receive assets after the fact, so use the tag push above.)
+:::{note} Without immutable releases
+You can instead **publish a release from the GitHub UI** — that also creates the tag,
+and the `release` job attaches `docs.zip` to the release you published. (This doesn't
+work under immutable releases: a published immutable release can't receive assets
+after the fact, so use the tag push above.)
+:::
 
 Either way, the next deploy's `publish` gathers that release, flags it `preferred` (★),
 creates the `stable/` alias pointing at it, and points the root redirect at the constant

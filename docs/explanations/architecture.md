@@ -113,15 +113,15 @@ visible on the PR / commit — rather than running invisibly after the fact. A s
 
 `publish.yml` is the `workflow_call` **engine** and owns all the publish branching,
 reached only through a thin `publish-dispatch.yml` shim that exposes it as both
-`workflow_call` (the inline `publish` job) and `workflow_dispatch` (the trampoline's
+`workflow_call` (the inline `publish` job) and `workflow_dispatch` (the tag
 re-dispatch, the fork-PR opt-in, manual re-deploys). It routes each event to one of three
-jobs: **deploy** (internal PR / default-branch push, or a dispatch), **trampoline** (a tag
+jobs: **deploy** (internal PR / default-branch push, or a dispatch), **re-dispatch** (a tag
 — below), or **warn** (a fork PR — read-only, never deploys, just posts the manual-opt-in
 hint; this replaced the old warning step in the build job). A fork PR can't reach a write
 token (its `GITHUB_TOKEN` is read-only and `deploy` is `if`-excluded for forks), so the
 security boundary holds while the hint lives next to the rest of the publish logic. The
 shim exists only because a reusable workflow can't be `workflow_dispatch`'d cross-repo, so
-the trampoline needs a local file to re-dispatch — it `gh workflow run`s the shim by name
+the re-dispatch job needs a local file to re-fire — it `gh workflow run`s the shim by name
 (`dispatch-workflow`), which works because a called workflow runs with the *caller's* repo
 and token. This repo dogfoods the exact shim a consumer adds (theirs just pins
 `publish.yml@<tag>`).
@@ -131,9 +131,9 @@ from **their own ref**, the `github-pages` environment's deployment-branch polic
 allow those refs. The alternative — triggering publish via `workflow_run` after CI
 completes — keeps deploys on the default branch only, but at the price of the deploy
 being invisible on the PR. This project chose visibility. (Tags are the exception —
-they deploy from the default-branch ref via the trampoline below, not their own ref.)
+they deploy from the default-branch ref via the re-dispatch below, not their own ref.)
 
-### Why tags deploy via a `workflow_dispatch` trampoline
+### Why tags deploy via a `workflow_dispatch` re-dispatch
 
 A release tag is cut on the merge commit, so it shares the default branch's
 just-deployed SHA. `deploy-pages` stamps every deployment with
@@ -146,15 +146,15 @@ record active, but the origin keeps serving the *first* artifact. So an inline t
 deploy would "succeed" while the site stayed on the pre-tag build.
 
 The one documented escape hatch: a `workflow_dispatch` deploy of that same SHA
-*forces* a re-serve. So tags don't deploy inline — `publish.yml`'s `trampoline` job
+*forces* a re-serve. So tags don't deploy inline — `publish.yml`'s `re-dispatch` job
 waits for `ci.yml`'s parallel `release` job to attach the new `docs.zip`, then
 `gh workflow run`s the shim as a `workflow_dispatch`; that run re-gathers from durable
 sources (now including the new release) and deploys, and because its event is
 `workflow_dispatch` the origin updates. `main` and internal-PR deploys are the *first* of
 their SHA, so they serve fine inline and keep their PR/commit visibility. This all lives
 in the shared engine — the consumer's only dispatch-related file is the thin shim (a
-reusable workflow can't be dispatched cross-repo, so the trampoline needs a local file to
-re-dispatch).
+reusable workflow can't be dispatched cross-repo, so the re-dispatch job needs a local file
+to re-fire).
 The post-deploy origin-verify step in `publish.yml` backstops any residual stale
 origin by failing the run instead of serving stale docs silently.
 
@@ -168,7 +168,7 @@ build's version name to `publish.yml`, which hands it to `assemble` as
 `ARTIFACT_VERSION_NAME`; `publish.yml` downloads this run's `docs` artifact and
 `assemble` unzips + stages it directly, **skipping the re-gather of that version**.
 Everything else still comes from durable sources. The dispatch paths (the tag
-trampoline and the fork opt-in) pass no current build — they gather entirely from
+re-dispatch and the fork opt-in) pass no current build — they gather entirely from
 durable sources, the tag from its just-attached `docs.zip` Release asset and a fork
 from its approved head SHA's successful run.
 

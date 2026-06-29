@@ -3,11 +3,11 @@ name: Publish (dispatch)
 # Thin shim — the one dispatchable file in this repo (and the one consumers copy). It
 # forwards to publish.yml's engine, exposing it two ways:
 #   workflow_call    — ci.yml's `publish` job, for every event (publish.yml branches into
-#                      deploy / tag trampoline / fork warn).
-#   workflow_dispatch — the tag trampoline's re-dispatch, the fork-PR preview (`pr`), and
+#                      deploy / tag re-dispatch / fork warn).
+#   workflow_dispatch — the tag re-dispatch, the fork-PR preview (`pr`), and
 #                      manual re-deploys.
 # A reusable workflow can't be `workflow_dispatch`'d cross-repo, so this shim must live
-# in the consumer's repo; publish.yml's trampoline re-dispatches it by name
+# in the consumer's repo; publish.yml's re-dispatch job re-fires it by name
 # (`dispatch-workflow`). This repo dogfoods the exact shim a consumer adds — theirs only
 # differs in the `uses:` target (…/publish.yml@<tag>), the single place they pin <tag>.
 on:
@@ -31,10 +31,10 @@ jobs:
     with:
       version-name: ${{ inputs.version-name }}   # "" on dispatch → pure durable gather
       pr: ${{ inputs.pr }}                        # set (dispatch only) → pin that fork head SHA
-      dispatch-workflow: publish-dispatch.yml     # the file the tag trampoline re-dispatches
+      dispatch-workflow: publish-dispatch.yml     # the file the tag re-dispatch re-fires
     permissions:
       contents: read
-      actions: write     # publish.yml's trampoline re-dispatches this shim via gh
+      actions: write     # publish.yml's re-dispatch job re-fires this shim via gh
       pages: write
       id-token: write
       statuses: write

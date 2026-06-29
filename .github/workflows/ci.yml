@@ -6,7 +6,7 @@ name: CI
 #
 # Publishing is nested here (the `publish` job → publish-dispatch.yml shim → publish.yml)
 # so its status is visible on the PR / commit. A single `publish` job covers every event;
-# publish.yml branches internally into deploy (internal PR / main push), tag trampoline
+# publish.yml branches internally into deploy (internal PR / main push), tag re-dispatch
 # (a same-SHA tag deploy would be silently dropped by Pages unless dispatched), or a
 # fork-PR warning (forks build with a read-only token and never deploy). See the
 # architecture explanation in docs/.
@@ -38,12 +38,12 @@ jobs:
       contents: write    # create the GitHub Release + attach assets
 
   # One publish job for every event — publish.yml (reached via the publish-dispatch.yml
-  # shim) owns the branching (deploy inline / tag trampoline / fork-PR warn), so there's
+  # shim) owns the branching (deploy inline / tag re-dispatch / fork-PR warn), so there's
   # no separate tag or fork job and no ref/fork guards here. It runs for fork PRs too,
   # but only to surface the opt-in hint: publish.yml's `deploy` job excludes forks and a
   # fork PR's token is read-only, so untrusted code never reaches a write token.
-  # `actions: write` lets the trampoline re-dispatch the shim; `version-name` is the
-  # in-run build for the inline path (ignored by the trampoline/warn branches).
+  # `actions: write` lets the re-dispatch job re-fire the shim; `version-name` is the
+  # in-run build for the inline path (ignored by the re-dispatch/warn branches).
   publish:
     needs: [lint, test, docs]
     if: github.repository == 'DiamondLightSource/myst-version-switcher-plugin'
@@ -52,7 +52,7 @@ jobs:
       version-name: ${{ needs.docs.outputs.version-name }}
     permissions:
       contents: read
-      actions: write     # the wrapper's tag trampoline dispatches via gh workflow run
+      actions: write     # the wrapper's tag re-dispatch dispatches via gh workflow run
       pages: write
       id-token: write
       statuses: write
